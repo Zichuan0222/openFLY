@@ -131,7 +131,7 @@ int main() {
 
   DetectVacancies detect(4, perfect.box(), perfect);
 
-  system::Supercell cell = remove_atoms(perfect, {1});
+  system::Supercell cell = remove_atoms(perfect, {1, 3});
 
   Vec r_H = {2.857 / 2 + 3.14, 2.857 / 2 + 3.14, 2.857 / 4 + 3.14};
 
@@ -163,6 +163,10 @@ int main() {
 
     file.write("particles/N", fly::safe_cast<std::uint32_t>(special.size()));
 
+    file.write("log/time", -1.);
+    file.write("log/barrier", -1.);
+    file.write("log/energy", -1.);
+
     file.write(id_, special);
     file.write(r_, special);
   });
@@ -170,13 +174,13 @@ int main() {
   kinetic::SKMC runner = {
       {
           .debug = true,
-          .fread = "build/gsd/tmp.bin",
+          .fread = "build/gsd/cat.v2.bin",
           .opt_cache = {
               .barrier_tol = 0.45,
               .debug = true,
               .opt_basin = {
                   .debug = true,
-                  .temp = 300,
+                  .temp = 400,
               },
               .opt_sb = {
                   .debug = true,
@@ -222,9 +226,11 @@ int main() {
               omp_get_max_threads(),
               [&](double time,                        ///< Total time just after system at post
                   system::SoA<Position const &> pre,  ///< State just before mech applied
+                  double E0, //Enegy of pre
                   int atom,                           ///< Index of central atom of mechanism
                   env::Mechanism const &mech,         ///< Chosen mechanism
-                  system::SoA<Position const &> post  ///< Final state of system after this iteration / mech
+                  system::SoA<Position const &> post,  ///< Final state of system after this iteration / mech
+                  double Ef // energy of post
               ) {
                 //
                 d_time = time;
@@ -240,6 +246,8 @@ int main() {
 
                 fmt::print("Found {} vacancies @{:::.2f}\n", v2.size(), v2);
 
+                fmt::print("E0={:.8e}, Ef={:.8e}\n", E0, Ef);
+
                 auto dist = distances(cell.box(), v2, post(r_, post.size() - 1));
 
                 fmt::print("Max V-V = {:.3e}, min V-H = {:.3e}\n", dist.v_v, dist.v_h);
@@ -250,9 +258,17 @@ int main() {
                   auto copy = vpost;
                   copy[r_].head(pre[r_].size()) = pre[r_];
                   file.write(r_, copy);
+                  file.write("log/time", -1.);
+                  file.write("log/barrier", -1.);
+                  file.write("log/energy", E0);
                 });
 
-                file.commit([&] { file.write(r_, vpost); });
+                file.commit([&] { 
+                  file.write(r_, vpost);  
+                  file.write("log/time", time);
+                  file.write("log/barrier", mech.barrier);
+                  file.write("log/energy", Ef);
+                });
 
                 fmt::print("Just wrote frame index No. {}\n", file.n_frames() - 1);
 

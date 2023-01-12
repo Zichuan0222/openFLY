@@ -324,7 +324,7 @@ namespace fly::kinetic {
 
         time += dt;
 
-        stop = std::invoke(f, time, std::as_const(cell), atom, m, system::SoA<Position const&>{rel_recon});
+        stop = std::invoke(f, time, std::as_const(cell), E0, atom, m, system::SoA<Position const&>{rel_recon}, Ef);
 
         cell[r_] = rel_recon[r_];
 
