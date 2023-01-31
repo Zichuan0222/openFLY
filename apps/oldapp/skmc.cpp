@@ -272,7 +272,7 @@ int main() {
 
                 fmt::print("Just wrote frame index No. {}\n", file.n_frames() - 1);
 
-                if (dist.v_v > 6) {
+                if (dist.v_h > 6) {
                   ++count;
                 } else {
                   count = 0;
@@ -281,7 +281,7 @@ int main() {
                 return count >= 2;
               });
 
-  fmt::print("It took {:.3e}s for H do detrap\n", d_time);
+  fmt::print("It took {:.3e}s for H to detrap\n", d_time);
 
   return 0;
 }
