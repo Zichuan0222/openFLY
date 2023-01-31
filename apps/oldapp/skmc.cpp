@@ -76,7 +76,7 @@ fly::system::SoA<TypeID, Position> explicit_V(std::vector<Vec> const &vac,
   fly::system::SoA<TypeID, Position> special(cell.size() + fly::ssize(vac));
 
   special[id_].head(cell.size()) = cell[id_];  // Copy cells types
-  special[id_].tail(fly::ssize(vac)) = 2;      // TypeID for vacacies == 2
+  special[id_].tail(fly::ssize(vac)) = 2;      // TypeID for vacancies == 2
 
   special[r_].head(cell[r_].size()) = cell[r_];
 
@@ -89,47 +89,12 @@ fly::system::SoA<TypeID, Position> explicit_V(std::vector<Vec> const &vac,
   return special;
 }
 
-struct Result {
-  double v_v;  ///< The maximum of the V-V neighrest-neighbour distances. E.G for each vacancy compute the
-               ///< distance to its closest neighbour then v_v is the maximum of these.
-  double v_h;  ///< The minimum V-H distance.
-};
-
-/**
- * @brief
- */
-Result distances(system::Box const &box, std::vector<Vec> const &vac, Vec hy) {
-  //
-  auto mi = box.slow_min_image_computer();
-
-  Result r{
-      0,
-      std::numeric_limits<double>::max(),
-  };
-
-  for (auto const &v : vac) {
-    r.v_h = std::min(r.v_h, mi(hy, v));
-
-    for (auto const &n : vac) {
-      r.v_v = std::max(r.v_v, mi(n, v));
-    }
-  }
-
-  return r;
-}
-
 int main() {
   //
 
-  // double a;
-
-  // fmt::print("a = ");
-
-  // std::cin >> a;
-
   system::Supercell perfect = motif_to_lattice(bcc_iron_motif(), {6, 6, 6});
 
-  DetectVacancies detect(4, perfect.box(), perfect);
+  DetectVacancies detect(0.75, perfect.box(), perfect);
 
   system::Supercell cell = remove_atoms(perfect, {1, 3});
 
@@ -149,19 +114,14 @@ int main() {
 
   fly::io::BinaryFile file("build/gsd/sim.gsd", fly::io::create);
 
-  auto vac = detect.detect_vacancies(cell);
-
-  fmt::print("Found {} vacancies @{:::.2f}\n", vac.size(), vac);
-
-  auto const N = vac.size();
-
   file.commit([&] {
     file.write(cell.box());
     file.write(cell.map());
 
-    auto special = explicit_V(vac, cell);
+    file.write("particles/N", fly::safe_cast<std::uint32_t>(cell.size()));
 
-    file.write("particles/N", fly::safe_cast<std::uint32_t>(special.size()));
+    file.write(id_, cell);
+    file.write(r_, cell);
 
     file.write("log/time", -1.);
     file.write("log/barrier", -1.);
@@ -219,8 +179,11 @@ int main() {
       },
   };
 
-  double d_time = 0;
-  int count = 0;
+  auto const min_image = cell.box().slow_min_image_computer();
+
+  double run_time = 0;
+  bool v_diss = false;
+  bool h_escaped = false;
 
   runner.skmc(cell,
               omp_get_max_threads(),
@@ -233,26 +196,39 @@ int main() {
                   double Ef // energy of post
               ) {
                 //
-                d_time = time;
+                run_time = time;
 
                 fly::system::SoA<TypeID const &, Position const &> tmp(cell.size());
 
                 tmp.rebind(r_, post);
                 tmp.rebind(id_, cell);
 
-                auto v2 = detect.detect_vacancies(tmp);
+                std::vector vac = detect.detect_vacancies(tmp);
 
-                verify(v2.size() == N, "Num v changed");
+                fmt::print("Found {} vacancies @{:::.2f}\n", vac.size(), vac);
 
-                fmt::print("Found {} vacancies @{:::.2f}\n", v2.size(), v2);
+                // V-dis testing
+
+                double const VV = kruskal_max(vac, min_image);
+
+                fmt::print("MST max V-V = {:.3e}\n", VV);
+
+                v_diss = VV > 5;  // Vacancy-cluster dissociation criterion
 
                 fmt::print("E0={:.8e}, Ef={:.8e}\n", E0, Ef);
 
                 auto dist = distances(cell.box(), v2, post(r_, post.size() - 1));
 
-                fmt::print("Max V-V = {:.3e}, min V-H = {:.3e}\n", dist.v_v, dist.v_h);
+                  for (auto const &v : vac) {
+                    vh = std::min(vh, min_image(post(r_, last), v));
+                  }
 
-                auto vpost = explicit_V(v2, tmp);
+                  fmt::print("Min V-H = {:.3e}\n", vh);
+
+                  h_escaped = vh > 6;  // H-escape criterion set here.
+                }
+
+                // Write to GSD
 
                 file.commit([&] {
                   auto copy = vpost;
@@ -270,7 +246,7 @@ int main() {
                   file.write("log/energy", Ef);
                 });
 
-                fmt::print("Just wrote frame index No. {}\n", file.n_frames() - 1);
+                  file.write("particles/N", fly::safe_cast<std::uint32_t>(vpost.size()));
 
                 if (dist.v_h > 6) {
                   ++count;
@@ -278,7 +254,7 @@ int main() {
                   count = 0;
                 }
 
-                return count >= 2;
+                return v_diss;
               });
 
   fmt::print("It took {:.3e}s for H to detrap\n", d_time);

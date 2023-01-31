@@ -16,20 +16,78 @@ Changelog
 .. Meta 
 .. ~~~~
 
-.. Version is specified in vcpkg.json, docs/index.rst and libfly/utility/version.hpp
+.. Version is specified here, in vcpkg.json, docs/index.rst and libfly/utility/version.hpp
 
 Unreleased
 -------------------------------
 Added
 ~~~~~
+
+- New ``kruskal_max`` algorithm for computing the size of vacancy clusters.
+
 Changed
 ~~~~~~~
+
+- The catalogues' ``reconstruct_impl`` now returns the transformation matrix.
+- ``DetectVacacies`` class interface changed and minimum distance introduced.
+- New hinting process for saddle point searches
+
 Removed
 ~~~~~~~
 Bugfixes
 ~~~~~~~~
 Meta 
 ~~~~
+
+
+Version 0.9.0
+-------------------------------
+
+The is the first semi-complete version of openFLY that adds support for superbasins and running OLKMC simulations.
+
+Added
+~~~~~
+
+- New ``viewSoA`` alias.
+- ``Supercell`` has a ``set_box`` method.
+- New ``SKMC`` class for running OLKMC simulations.
+- New ``SuperBasin`` class for managing a collection of basins.
+- New ``SuperCache`` class for managing a collection of superbasins.
+- New ``min_delta_max`` option for ``Catalogue``.
+- ``Dimer`` has a ``use_history`` option.
+- ``Dimer``'s ``find_sp`` accepts the number of frozen atoms.
+- ``Hessian`` exposes a ``Matrix`` member type and methods to calculate eigen vectors.
+- New ``centoid`` and ``centroid_align`` functions in the lattice namespace.
+- New ``DetectVacacies`` class for explicitly detecting vacancies.
+- ``Catalogue`` counts false positives and has an ``optimise`` method.
+
+Changed
+~~~~~~~
+
+
+- ``Dimer`` fixes the COM of the cell during SP searches by projection translational components out.
+- During SP searches reconstruction we deterministically chose the dimer to axis to improve reproducibility.
+- During SP searches we utilise the fixed COM in the SP comparison step.
+- Potential's hessian function is specified as non-mass weighted and a mass-weight function is included.
+- Increased default ``MAX_GHOST_RATIO`` for ``neigh::List``.
+- Changed catalogue to write in Cereal's portable_binary format.
+- Split poisoned mechanisms into SP/Minima poisoned.
+- Renamed ``xise`` to ``ssize``!
+- New options for EAM parsing to support debugging and alternative tabulations.
+
+
+Bugfixes
+~~~~~~~~
+
+- EAM Hessian bug fixed (was calculating slightly wrong Hessians!).
+- EAM potential parser handles tabulations with ``numP != numR`` correctly.
+- EAM potential does not require the same number of types in-use/available just that in-use is a subset of available. 
+
+Meta 
+~~~~
+
+- Cmake's DOWNLOAD_EXTRACT_TIMESTAMP Warnings fixed.
+- Removed CI macOS builds due to openMP bug on on GitHub actions runners.
 
 Version 0.8.0
 -------------------------------
@@ -47,10 +105,10 @@ Added
 - Catalogue has serialisation support (hence all serialised members of the catalogue do to).
 - Catalogue environments expose their delta_max.
 - Catalogue has a method to calculate the (approximate) symmetries a geometry has.
-- Dimer::Exit has a new return code.
-- Many new options in Master::Options.
-- New Xoshiro constructor to properly seed from ``std::random_device``.
-- Box has a new min_image calculator method.
+- ``Dimer::Exit`` has a new return code.
+- Many new options in ``Master::Options``.
+- New ``Xoshiro`` constructor to properly seed from ``std::random_device``.
+- ``Box`` has a new min_image calculator method.
 
 Changed
 ~~~~~~~

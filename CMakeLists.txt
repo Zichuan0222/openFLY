@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.16...3.22)
+cmake_minimum_required(VERSION 3.16)
 
 # In-source guard
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
@@ -20,6 +20,11 @@ project(
 # This variable is set by project() in CMake 3.21+
 if(NOT PROJECT_IS_TOP_LEVEL)
     string(COMPARE EQUAL "${CMAKE_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}" PROJECT_IS_TOP_LEVEL)
+endif()
+
+# Avoid warning about DOWNLOAD_EXTRACT_TIMESTAMP in CMake 3.24:
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.24.0")
+    cmake_policy(SET CMP0135 NEW)
 endif()
 
 # Developer mode enables targets and code paths in the CMake scripts that are only relevant for the
@@ -101,9 +106,9 @@ add_executable(skmcFLY apps/skmc_charlie.cpp)
 target_compile_features(skmcFLY PRIVATE cxx_std_17)
 target_link_libraries(skmcFLY PRIVATE libFLY)
 
-add_executable(skmcFLY2 apps/skmcC.cpp)
-target_compile_features(skmcFLY2 PRIVATE cxx_std_17)
-target_link_libraries(skmcFLY2 PRIVATE libFLY Nauty)
+# add_executable(skmcFLY2 apps/skmcC.cpp)
+# target_compile_features(skmcFLY2 PRIVATE cxx_std_17)
+# target_link_libraries(skmcFLY2 PRIVATE libFLY Nauty)
 
 # add_executable(benchFLY apps/bench.cpp)
 # target_compile_features(benchFLY PRIVATE cxx_std_17)

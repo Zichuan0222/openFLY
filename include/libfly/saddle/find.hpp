@@ -282,6 +282,16 @@ namespace fly::saddle {
         -> std::vector<LocalisedGeo>;
 
     /**
+     * @brief A hint for ensuring ergodic pathways.
+     */
+    struct Hint {
+      system::SoA<Position> prev_state;  ///< A reference to the previous state of the system
+      Index::scalar_t centre;            ///< Central atom of mech that brought us to current state.
+      system::VoS<Delta> delta_sp;       ///< To SP of mechanism that brought us to current state.
+      env::Geometry<Index> geo;          ///< Geometry around central atom in previous state.
+    };
+
+    /**
      * @brief Find all the mechanisms centred on the ``unknown`` geometries.
      *
      * This will recursively schedule SP searches on the slave threads.
@@ -289,8 +299,10 @@ namespace fly::saddle {
      * @param geos A list of localised geometries encoding the atoms to centre the SP searches on and their
      * local environments.
      * @param in Description of system to search in.
+     * @param hint A hint to aid in
      */
-    auto find_mechs(std::vector<LocalisedGeo> const& geos, SoA in) -> std::vector<Found>;
+    auto find_mechs(std::vector<LocalisedGeo> const& geos, SoA in, std::optional<Hint> const& hint = {})
+        -> std::vector<Found>;
 
   private:
     // Per thread variables
@@ -331,8 +343,25 @@ namespace fly::saddle {
 
     ///////////////////////////////////////////////////////////////////////////////////
 
+    bool add_mech(Found& out,
+                  SoA in,
+                  env::Mechanism&& mech,
+                  system::viewSoA<Position, Axis> dimer,
+                  std::vector<system::SoA<Position>>& cache,
+                  LocalisedGeo const& geo_data);
+
+    void process_hint(Found& out,
+                      LocalisedGeo const& geo_data,
+                      SoA in,
+                      Hint const& hint,
+                      std::vector<system::SoA<Position>>& cache);
+
     // Find all mechs and write to geo_data
-    void find_n(Found& out, LocalisedGeo const& geo_data, SoA in, neigh::List const& nl_pert);
+    void find_n(Found& out,
+                LocalisedGeo const& geo_data,
+                SoA in,
+                neigh::List const& nl_pert,
+                std::optional<Hint> const& hint);
 
     bool find_batch(int tot,
                     Found& out,
@@ -345,21 +374,29 @@ namespace fly::saddle {
     /**
      * @brief Find a single mechanism
      *
+     * This assumes some COM drift between dimer and in
+     *
+     * Stages:
+     *  Find min->sp->min path from dimer with no COM drift
+     *  Check valid pathway
+     *  build mechanism from pathway
+     *  TEST mechanism reconstructs onto sp+min
+     *
+     *
      * @param in Initial basin
-     * @param dimer_in_out Perturbed dimer as input and output.
-     * @param hist_sp Previous saddle points.
-     * @param exit Stores the return code of the SP search.
-     * @param theta_tol forwarded to Dimer::find_sp()
+     * @param dimer Dimer at the saddle-point output.
      * @param geo Centred of perturbation.
      */
-    std::optional<env::Mechanism> find_one(SoA in,
-                                           system::SoA<Position&, Axis&> dimer_in_out,
-                                           Dimer::Exit& exit,
-                                           env::Geometry<Index> const& geo,
-                                           std::vector<system::SoA<Position>> const& hist_sp,
-                                           double theta_tol);
+    std::optional<env::Mechanism> saddle_2_mech(system::viewSoA<Position, Frozen, TypeID> in,
+                                                system::viewSoA<Position, Axis, Frozen, TypeID> dimer,
+                                                env::Geometry<Index> const& geo);
 
-    // Do a saddle point search
+    /**
+     * @brief Do a SP search
+     *
+     * Move dimer (pos+ax) to the saddle point.
+     *
+     */
     Dimer::Exit find_sp(system::SoA<Position&, Axis&, Frozen const&, TypeID const&> dimer,
                         system::SoA<Position const&> in,
                         std::vector<system::SoA<Position>> const& hist_sp,
