@@ -118,6 +118,30 @@ Result distances(system::Box const &box, std::vector<Vec> const &vac, Vec hy) {
 }
 
 
+// struct 
+
+struct cluster {
+  std::string name;
+  std::string binname;
+  std::vector<long int> atom_index;
+  bool adding_H {};
+  bool forVdiss {};
+  double diss_criterion {};
+};
+
+//// ---------------------------------------------- Clusters ------------------------------------------------////
+
+const cluster V1H_Hdis = {"V1H_Hdis", "v1h", {1}, true, false, 6.0};
+
+const cluster V2_Vdis = {"V2_Vdis", "v2", {1, 3}, false, true, 4.85};
+const cluster V2H_Hdis = {"V2H_Hdis", "v2h_v3h", {1, 3}, true, false, 6.0};
+const cluster V2H_Vdis = {"V2H_Vdis", "v2h_v3h", {1, 3}, true, true, 4.85};
+
+const cluster V3_Vdis = {"V3_Vdis", "v3", {1, 3, 86}, false, true, 4.5};
+const cluster V3H_Hdis = {"V3_Vdis", "v2h_v3h", {1, 3, 86}, false, true, 6.0};
+const cluster V3H_Vdis = {"V3H_Vdis", "v2h_v3h", {1, 3, 86}, true, true, 4.5};
+
+//// ---------------------------------------------- -------- ------------------------------------------------////
 
 struct TempVdis {  
   int temp {};        //< Temperature of simulation
@@ -125,19 +149,6 @@ struct TempVdis {
   int vcount {};      //< The no. of times V-dis before H-dis
 };
 
-
-// // Input cell and positions (in armstrongs) of atoms to be deleted, output the indices of those atoms.
-// int position_to_index(system::SoA<Position const&> pos, Vec const& coor){
-    
-//     for (int i=0; i<pos.size(); ++i) {
-//         Vec coori = pos(r_, i);
-//         double disti = gnorm (coori - coor);
-//         if (disti < 0.2){
-//             return i;
-//         }}
-
-// throw error("Could not find such atoms");
-// }
 
 
 
@@ -193,26 +204,30 @@ int exporttotxt(std::string filename,
 // Output: lifetime of V-H complex or V cluster
 
 double complex_lifetime(double const& temp, 
+                        cluster cluster,
                         std::string gsdfiledirectory,
                         int loopcounter){
 
   system::Supercell perfect = motif_to_lattice(bcc_iron_motif(), {6, 6, 6});
 
-  DetectVacancies detect(4, perfect.box(), perfect);
+   DetectVacancies detect(0.75, perfect.box(), perfect);
 
 
   // ------------------- delete atoms ------------------- //
-  system::Supercell cell = remove_atoms(perfect, {1, 3});               // remove atoms by indices
+  system::Supercell cell = remove_atoms(perfect, cluster.atom_index);               // remove atoms by indices
   
   // Indices of atoms to be removed:
   // 1V - 1
   // 2V - 1, 3
-  // 3V
+  // 3V - 1, 3, 86
 
   Vec r_H = {2.857 / 2 + 3.14, 2.857 / 2 + 3.14, 2.857 / 4 + 3.14};
 
   // ------------------- adding H ------------------- //
-  cell = add_atoms(cell, {system::Atom<TypeID, Position, Frozen>(1, r_H, false)});       //  add H into lattice
+  if (cluster.adding_H){
+    cell = add_atoms(cell, {system::Atom<TypeID, Position, Frozen>(1, r_H, false)});       //  add H into lattice
+  } 
+
 
 
   //   cell = add_atoms(
@@ -226,35 +241,28 @@ double complex_lifetime(double const& temp,
   //   cell(r_, 0) = Vec{4.45211, 4.45172, 4.2526};
 
 
-  // std::string gsdfilename                                 //<<<<<<<<<<<<<<<<< Use this line to save all .gsd file
-  //     = gsdfiledirectory + "/" 
-  //       + std::to_string(int(temp)) + "K_"            
-  //       + findsystemtime() + ".gsd";                   
+    std::string gsdfilename                                 //<<<<<<<<<<<<<<<<< Use this line to save all .gsd file
+        = gsdfiledirectory + "/" 
+          + std::to_string(int(temp)) + "K_"            
+          + findsystemtime() + ".gsd";                   
 
-  std::string gsdfilename = gsdfiledirectory + "sim.gsd";    //<<<<<<<<<<<<<< Use this line to save only current .gsd file
+  // std::string gsdfilename = gsdfiledirectory + "sim.gsd";    //<<<<<<<<<<<<<< Use this line to save only current .gsd file
 
   fly::io::BinaryFile file(gsdfilename, fly::io::create);
-
-  auto vac = detect.detect_vacancies(cell);
-
-  fmt::print("Found {} vacancies @{:::.2f}\n", vac.size(), vac);
-
-  auto const N = vac.size();
-
+  
   file.commit([&] {
     file.write(cell.box());
     file.write(cell.map());
 
-    auto special = explicit_V(vac, cell);
+    file.write("particles/N", fly::safe_cast<std::uint32_t>(cell.size()));
 
-    file.write("particles/N", fly::safe_cast<std::uint32_t>(special.size()));
+    file.write(id_, cell);
+    file.write(r_, cell);
 
-    file.write("log/time", -1.);                // write -1 to initialise
-    file.write("log/barrier", -1.);
+    file.write("log/time", -1.);
     file.write("log/energy", -1.);
-
-    file.write(id_, special);
-    file.write(r_, special);
+    file.write("log/barrier", -1.);
+    file.write("log/kinetic", -1.);
   });
 
   kinetic::SKMC runner = {
@@ -262,9 +270,9 @@ double complex_lifetime(double const& temp,
           .debug = true,
 
           //---------------------------- bin file directory --------------------------//
-          .fread = "build/gsd/cat.v2h.bin",      
+          .fread = "build/gsd/cat." + cluster.binname + ".bin",      
             // Use a different bin file for with/without H
-            // Names of bin files: v1h, v2, v2h,
+            // Names of bin files: v1h, v2, v2h_v3h, v3
           .opt_cache = {                            
               .barrier_tol = 0.45,
               .debug = true,
@@ -277,6 +285,7 @@ double complex_lifetime(double const& temp,
               },
           },
           .opt_master = {
+              .hessian_eigen_zero_tol = 1e-3,
               .num_threads = omp_get_max_threads(),
               .max_searches = 200,
               .max_failed_searches = 75,
@@ -309,9 +318,11 @@ double complex_lifetime(double const& temp,
       },
   };
 
-  double d_time = 0;
-  int count = 0;
+  auto const min_image = cell.box().slow_min_image_computer();
 
+  double run_time = 0;
+  bool dissociation = false;
+  // bool h_escaped = false;
 
   runner.skmc(cell,
               omp_get_max_threads(),
@@ -324,129 +335,134 @@ double complex_lifetime(double const& temp,
                   double Ef                     // energy of post
               ) {
                 
-                d_time = time;
+                  
+                run_time = time;
 
                 fly::system::SoA<TypeID const &, Position const &> tmp(cell.size());
 
                 tmp.rebind(r_, post);
                 tmp.rebind(id_, cell);
 
-                auto v2 = detect.detect_vacancies(tmp);
+                std::vector vac = detect.detect_vacancies(tmp);
 
-                verify(v2.size() == N, "Num v changed");
+                fmt::print("Found {} vacancies @{:::.2f}\n", vac.size(), vac);
 
-                fmt::print("Found {} vacancies @{:::.2f}\n", v2.size(), v2);
 
-                fmt::print("E0={:.8e}, Ef={:.8e}\n", E0, Ef);
+                // V-dis testing by minimum spanning tree (MST)
 
-                auto dist = distances(cell.box(), v2, post(r_, post.size() - 1));
+                double const VV = kruskal_max(vac, min_image);
 
-                fmt::print("Max V-V = {:.3e}, min V-H = {:.3e}\n", dist.v_v, dist.v_h);
+                fmt::print("MST max V-V = {:.3e}\n", VV);
 
-                auto vpost = explicit_V(v2, tmp);
+
+                if (cluster.forVdiss){
+                  dissociation = VV > cluster.diss_criterion;  // Vacancy-cluster dissociation criterion
+                }
+                else {
+                  // H-escape testing
+                  if (auto last = post.size() - 1; cell(id_, last) == 1) {
+                    double vh = std::numeric_limits<double>::max();
+
+                    for (auto const &v : vac) {
+                      vh = std::min(vh, min_image(post(r_, last), v));
+                    }
+
+                    fmt::print("Min V-H = {:.3e}\n", vh);
+
+
+
+                    dissociation = vh > cluster.diss_criterion;  // H-escape criterion set here.
+                }
+                }
+
+
+                // Write to GSD
 
                 file.commit([&] {
-                  auto copy = vpost;
-                  copy[r_].head(pre[r_].size()) = pre[r_];
-                  file.write(r_, copy);
-                  file.write("log/time", -1.);
-                  file.write("log/barrier", -1.);
+                  file.write("particles/N", fly::safe_cast<std::uint32_t>(cell.size()));
+
+                  file.write(r_, pre);
+
                   file.write("log/energy", E0);
                 });
 
-                file.commit([&] { 
-                  file.write(r_, vpost);  
+                file.commit([&] {
+                  //
+                  auto vpost = explicit_V(vac, tmp);
+
+                  file.write("particles/N", fly::safe_cast<std::uint32_t>(vpost.size()));
+
+                  file.write(id_, vpost);
+                  file.write(r_, vpost);
+
                   file.write("log/time", time);
-                  file.write("log/barrier", mech.barrier);
                   file.write("log/energy", Ef);
+                  file.write("log/barrier", mech.barrier);
+                  file.write("log/kinetic", mech.kinetic_pre);
                 });
 
-                fmt::print("Just wrote frame index No. {} (iteration no. {}, {} K) \n", 
+                fmt::print("Just wrote frame index No. {} (iteration no. {}, {} K) \n\n", 
                             file.n_frames() - 1, 
                             loopcounter + 1,          // a counter to print the current no. of iteration
                             temp);
 
-
-
-                
-                //-------------------------- Dissociation criterion ----------------------------//
-
-                //// ---- H-diss criterion ---- ////
-                // if (dist.v_v > 4.85){           // detect if V diss occurs before H diss
-                //   ++count;
-                //   fmt::print("The cluster dissociates before H escapes after {:.3e}s \n", d_time);
-                //   d_time = 0.0;
-                // }
-                
-                // if (dist.v_h > 6){
-                //   ++count;
-                //   fmt::print("It took {:.3e}s for H to detrap\n", d_time);
-                // }
-
-                //// ---- V-diss criterion ----- ////
-                if (dist.v_v > 4.85){
-                  ++count;
-                  fmt::print("The cluster dissociates after {:.3e}s \n", d_time);
-                }
-
-                return count >= 1;           // Hdiss 
-                // return dist.v_v > 4.85;      // Vdiss (  5NN - 4.94A, 4NN - 4.74A)
+                return dissociation;
               });
 
   // fmt::print("It took {:.3e}s for H to detrap\n", d_time);
   // fmt::print("It took {:.3e}s for cluster to dissociate\n", d_time);
 
-  return d_time;
+  return run_time;
 }
+
 
 
 
 int main(){
 
   //-------------------------------- Type of cluster -------------------------------//
-  std::string clustertype = "V2H_Vdis";
-    
-    // Use: V2H_Hdis, 
+  std::string clustertype = V3H_Vdis.name;
+    // Use: (+.name)
+    //    V1H_Hdis; 
+    //    V2H_Hdis, V2H_Vdis, V2_Vdis; 
+    //    V3H_Vids; V3H_Hdis, V3_Vdis;
 
   std::string gsddirectory = "build/gsd/sim_output/" + clustertype + "_" + findsystemdate();   // gsd directory named after date of simulation
   std::filesystem::create_directory(gsddirectory);                                            
 
 
-  // int countvdis = 0;                        // counting cases when v-dis occurs before h-diss
-  // std::vector<double> countvdis
-  // int counttotal = 0;                       
-
-  // std::vector<double> tau_mean;             // Declare mean value for tau here, each entry is calculated from a number of iteration at a temperature
-  // std::vector<double> tau_stdev;            // Same as above, std dev of tau
-
-
-  int no_iteration = 4;                                            // Setting no. of iterations for each temperature
+  int no_iteration = 5;                                          // Setting no. of iterations for each temperature
   std::vector<double> temperature;                                 // Setting the range of temperatures  
-  for (int i=3; i<11; i++){
+  for (int i=3; i<8; i++){
     temperature.push_back(i * 100.0);
   }
 
 
   for (int i=0; i< temperature.size(); ++i){  
-    std::filesystem::create_directory("/home/zichuan/openFLY/build/data/" + clustertype); 
+    std::string datadirectory = "/home/zichuan/openFLY/build/data/";
+    std::filesystem::create_directory(datadirectory + clustertype); 
     std::string taufiletemp = std::to_string(int(temperature[i]));                   // Files named after temperature for txt output
 
-    std::ofstream taufile ("/home/zichuan/openFLY/build/data/" + clustertype + "/" + taufiletemp + "K.txt", std::ios::app);     // using append mode
+    std::ofstream taufile (datadirectory + clustertype + "/" + taufiletemp + "K.txt", std::ios::app);     // using append mode
 
     TempVdis diss_data {int(temperature[i]), no_iteration, 0};                       // Using struct defined above to count v-dis at each temperature
 
     for (int k=0; k<no_iteration; ++k){   
-      double tauvalue = complex_lifetime(temperature[i], gsddirectory, k);           // Call the above function to calculate lifetime
 
-      if (tauvalue == 0){                     // If dissociated - don't write anything
-        diss_data.vcount++;
-      } 
-      else {
+
+    // ------------------- Calculate lifetime --------------------- //
+      double tauvalue = complex_lifetime(temperature[i], V3H_Vdis, gsddirectory, k);       
+
+
+      // if (tauvalue == 0){                     // If dissociated - don't write anything
+      //   diss_data.vcount++;
+      // } 
+      // else {
         taufile << tauvalue << "\n";          // Write lifetime to txt file
-      }
+    //   }
     }
 
-    std::ifstream countinfile ("/home/zichuan/openFLY/build/data/" + clustertype + "/dissociation_count.txt");
+    std::ifstream countinfile (datadirectory + clustertype + "/dissociation_count.txt");
     int a, b, c, counter;
       a = b = c = counter = 0;
     std::vector<int> transfer_temp;
@@ -476,43 +492,12 @@ int main(){
     countinfile.close();
 
 
-    std::ofstream countoutfile ("/home/zichuan/openFLY/build/data/" + clustertype + "/dissociation_count.txt"); 
+    std::ofstream countoutfile (datadirectory + clustertype + "/dissociation_count.txt"); 
       for (int j=0; j<transfer_temp.size(); j++){
         countoutfile << transfer_temp[j] << " " << transfer_totalcount[j] << " " << transfer_vcount[j] << "\n";
       }
-      
-    // std::sort(tau.begin(), tau.end());                // Sort and print liftimes in ascending order
-    // std::cout << "\nLiftimes: \n";
-    // for (int k=0; k<tau.size(); ++k){
-    //   std::cout << tau[k] << ", ";
-    // }     
-
-    // // Calculating mean and std dev of tau
-    // double sum = std::accumulate(tau.begin(), tau.end(), 0.0);
-    // double mean = sum / tau.size(); 
-
-    // std::vector<double> squareterms(tau.size());
-    // for (int k=0; k<tau.size(); ++k){
-    //   squareterms[k] = ((tau[k] - mean)) * ((tau[k] - mean));                                              
-    // }
-    
-    // double squaresum = std::accumulate(squareterms.begin(), squareterms.end(), 0.0);
-    // double stdev = std::sqrt(squaresum / tau.size());                                        
-
-
-    // tau_mean.push_back(mean);
-    // tau_stdev.push_back(stdev);
-
   }
   
-
-// // export data to txt
-//   std::string outputdirectory = "/home/zichuan/openFLY/build/data/" + clustertype + "/";     //< export directory
-//   std::filesystem::create_directory(outputdirectory);  
-//   std::string outputfile                                                                     //< V: v-dissociation, H: h-dissociation
-//     = outputdirectory                                               
-//       + findsystemdate() + "_" + findsystemtime() + ".txt";                                  //< and date + time of simulation
-//   exporttotxt(outputfile, temperature, tau_mean, tau_stdev);
 
   return 0;
 }

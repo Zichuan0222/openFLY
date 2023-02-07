@@ -860,7 +860,7 @@ namespace fly::saddle {
       if (freq[i] < -m_opt.hessian_eigen_zero_tol) {
         dprint(m_opt.debug, "FINDER: Second order SP or higher, modes {} = {}\n", i, freq.head(i));
         return {};
-      } else if (freq[i] > m_opt.hessian_eigen_zero_tol) {
+      } else if (freq[i] > 1e-6) {
         mech.kinetic_pre += std::log(freq[i]);
       } else {
         ++count_zeros;
@@ -942,7 +942,7 @@ namespace fly::saddle {
 
     // Debugging extreme poisoning
 
-    if (mech.poison_fwd && mech.barrier < 1.) {
+    if (mech.poison_fwd && mech.barrier < 0.3) {
 #pragma omp critical
       {
         fly::io::BinaryFile file("poison.gsd", fly::io::create);

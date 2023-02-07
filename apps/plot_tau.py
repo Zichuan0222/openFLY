@@ -9,7 +9,7 @@ import statsmodels.api as sm
 
 # ----------------------- Min and Max temperatures ---------------------- #
 minT = 3
-maxT = 10
+maxT = 8                        # maxT = maximum temp / 100 + 1
 Tsize = maxT - minT
 
 temperature = np.zeros(Tsize)
@@ -26,7 +26,7 @@ for i in range (minT, maxT):
 for i in range(Tsize):
 
     # ----------------------------------- Cluster type --------------------------------- #
-    clustertype = "V2H_Vdis"
+    clustertype = "V3H_Vdis"
 
 
     datadirectory = "/home/zichuan/openFLY/build/data/"       # data txt file directory
@@ -50,7 +50,7 @@ for i in range(Tsize):
 
     print(temperature[i], taumean[i], stdev_tau[i], ln_taumean[i], stdev_lntau[i])
     
-countfilename = "/home/zichuan/openFLY/build/data/" + clustertype + "/dissociation_count.txt"
+countfilename = datadirectory + clustertype + "/dissociation_count.txt"
 iteration = np.loadtxt(countfilename, usecols = 1)
 no_iteration = int(np.max(iteration))
 
@@ -85,7 +85,7 @@ axs.set_xlabel("(1/T) / (1/K)", fontsize = 15)
 plt.title(clustertype + f"\n{no_iteration} iterations at each temperature", fontsize = 16   )
 
 # Saving the image and name after current time
-figdirectory = "/home/zichuan/openFLY/build/data/" +  clustertype + "/"
+figdirectory = datadirectory +  clustertype + "/"
 figname = clustertype + "_" + str(no_iteration) + ".png"                               # Change extension here, e.g. .png or .eps
 
 fig.set_size_inches(10,7)
@@ -94,6 +94,6 @@ plt.savefig(figdirectory + figname)
 
 model = sm.OLS(ln_taumean, sm.add_constant(inverse_temp))
 results = model.fit()
-
+ 
 print(results.params)
 print(results.summary())
